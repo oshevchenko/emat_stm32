@@ -11,13 +11,18 @@
 #define __TIMER_PULSE_H__
 typedef enum TIMER_PULSE_SM_STATE {
 	P_IDLE = -1,
-	P_RUNNING_BLOCK_AMP,
-	P_RUNNING_PULSE,
+	P_RUN_TO_PULSE_ON,
+	P_RUN_TO_AMP_ON,
+	P_RUN_TO_PULSE_OFF,
 	P_EXPIRED
 } tm_pulse_sm_e;
 
 typedef struct TIMER_PULSE_CB_STRUCT {
+	uint32_t delay_to_pulse_on;
+	uint32_t delay_to_amp_on;
+	uint32_t delay_to_pulse_off;
 	void (*p_amp_on_callback)(void);
+	void (*p_pulse_on_callback)(void);
 	void (*p_pulse_off_callback)(void);
 } tm_pulse_cb_s;
 
@@ -32,7 +37,7 @@ void TIMER_PULSE_Tick(void);
 void TIMER_PULSE_Task(void);
 void TIMER_PULSE_RegisterCallbackExpired(tm_pulse_cb_s *p_cb);
 void TIMER_PULSE_Init(TIM_HandleTypeDef *htim, IRQn_Type irq);
-void TIMER_PULSE_Start(uint32_t period);
+void TIMER_PULSE_Start(void);
 #endif //#define __TIMER_PULSE_H__
 /******END OF FILE****/
 

@@ -16,29 +16,39 @@ static tm_pulse_sm_s timer;
 static TIM_HandleTypeDef *m_htim;
 static IRQn_Type m_irq;
 
-void TIMER_PULSE_Start(uint32_t period)
+void TIMER_PULSE_Start(void)
 {
-	timer.state = P_RUNNING_BLOCK_AMP;
-	m_htim->Instance->ARR = 15;
-	m_htim->Instance->CNT = 0;
+	timer.state = P_RUN_TO_PULSE_ON;
+	m_htim->Instance->ARR = timer.cb.delay_to_pulse_on;
 	HAL_TIM_Base_Start_IT(m_htim);
+	m_htim->Instance->CNT = 0;
 }
 
 void TIMER_PULSE_Tick(void)
 {
-	if (P_RUNNING_BLOCK_AMP == timer.state) {
-		m_htim->Instance->ARR = 285;
+	if (P_RUN_TO_PULSE_ON == timer.state) {
+		m_htim->Instance->ARR = timer.cb.delay_to_amp_on;
+		(*timer.cb.p_pulse_on_callback)();
+		timer.state = P_RUN_TO_AMP_ON;
+	} else if (P_RUN_TO_AMP_ON == timer.state) {
+		m_htim->Instance->ARR = timer.cb.delay_to_pulse_off;
 		(*timer.cb.p_amp_on_callback)();
-		timer.state = P_RUNNING_PULSE;
-	} else if (P_RUNNING_PULSE == timer.state) {
+		timer.state = P_RUN_TO_PULSE_OFF;
+	} else if (P_RUN_TO_PULSE_OFF) {
 		(*timer.cb.p_pulse_off_callback)();
 		timer.state = P_EXPIRED;
 	}
+	m_htim->Instance->CNT = 0;
 }
 void TIMER_PULSE_RegisterCallbackExpired(tm_pulse_cb_s *p_cb)
 {
+	timer.cb.delay_to_pulse_on = p_cb->delay_to_pulse_on;
+	timer.cb.delay_to_amp_on = p_cb->delay_to_amp_on;
+	timer.cb.delay_to_pulse_off = p_cb->delay_to_pulse_off;
+
 	timer.cb.p_amp_on_callback = p_cb->p_amp_on_callback;
 	timer.cb.p_pulse_off_callback = p_cb->p_pulse_off_callback;
+	timer.cb.p_pulse_on_callback = p_cb->p_pulse_on_callback;
 }
 
 void TIMER_PULSE_Init(TIM_HandleTypeDef *htim, IRQn_Type irq)

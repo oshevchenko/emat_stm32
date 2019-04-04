@@ -145,6 +145,10 @@ void EventQueueIsFull(void)
 	for(;;);
 }
 
+void TimerPulseOnCallback(void)
+{
+	PULSE_ON();
+}
 void TimerPulseOffCallback(void)
 {
 	PULSE_OFF();
@@ -198,7 +202,11 @@ int main(void)
   TIMER_PULSE_Init(&htim3,TIM3_IRQn);
   tm_pulse_cb_s cb;
   cb.p_amp_on_callback = &TimerAmpOnCallback;
+  cb.p_pulse_on_callback = &TimerPulseOnCallback;
   cb.p_pulse_off_callback = &TimerPulseOffCallback;
+  cb.delay_to_pulse_on = 100;
+  cb.delay_to_amp_on = 15;
+  cb.delay_to_pulse_off = 285;
   TIMER_PULSE_RegisterCallbackExpired(&cb);
 //  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
@@ -235,12 +243,14 @@ int main(void)
 			  if (hv_state == HV_STATE_ON) {
 				  HV_OFF();
 				  hv_state = HV_STATE_OFF;
-				  TIMER_StartAuto(1, DELAY_AFTER_HV_OFF);
+				  PS_OFF();
+				  AMP_OFF();
+				  TIMER_PULSE_Start();
 				  pulse_state = PULSE_STATE_DELAY_AFTER_HV_OFF;
 			  } else {
-				  PULSE_ON();
+//				  PULSE_ON();
 				  AMP_OFF();
-				  TIMER_PULSE_Start(200);
+				  TIMER_PULSE_Start();
 
 //				  TIMER_StartAuto(1, pulse_width);
 				  pulse_state = PULSE_STATE_ON;
@@ -250,6 +260,11 @@ int main(void)
 		  case PULSE_TIMER_EXPIRED:
 			  if (pulse_state == PULSE_STATE_ON) {
 				  pulse_state = PULSE_STATE_OFF;
+			  } else if (PULSE_STATE_DELAY_AFTER_HV_OFF == pulse_state) {
+				  pulse_state = PULSE_STATE_OFF;
+				  HV_ON();
+				  hv_state = HV_STATE_ON;
+				  PS_ON();
 			  }
 			  break;
 		  case TIMER1_EXPIRED:
