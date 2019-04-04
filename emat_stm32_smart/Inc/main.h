@@ -10,7 +10,7 @@
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * Copyright (c) 2018 STMicroelectronics International N.V. 
+  * Copyright (c) 2019 STMicroelectronics International N.V. 
   * All rights reserved.
   *
   * Redistribution and use in source and binary forms, with or without 
@@ -61,6 +61,16 @@
 
 #define GPIO_GREEN_LED_Pin GPIO_PIN_13
 #define GPIO_GREEN_LED_GPIO_Port GPIOC
+#define GPIO_HV_ON_Pin GPIO_PIN_14
+#define GPIO_HV_ON_GPIO_Port GPIOC
+#define GPIO_PULSE_Pin GPIO_PIN_15
+#define GPIO_PULSE_GPIO_Port GPIOC
+#define GPIO_PS_EN_Pin GPIO_PIN_0
+#define GPIO_PS_EN_GPIO_Port GPIOA
+#define GPIO_AMP_ON_Pin GPIO_PIN_1
+#define GPIO_AMP_ON_GPIO_Port GPIOA
+#define GPIO_PULSE_B_Pin GPIO_PIN_3
+#define GPIO_PULSE_B_GPIO_Port GPIOB
 
 /* ########################## Assert Selection ############################## */
 /**

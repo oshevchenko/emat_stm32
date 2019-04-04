@@ -110,6 +110,5 @@ void TIMER_Stop(uint8_t num)
 	HAL_NVIC_EnableIRQ(TIM4_IRQn);
 }
 
-
 /******END OF FILE****/
 

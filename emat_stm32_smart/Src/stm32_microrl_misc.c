@@ -13,7 +13,7 @@ extern void USBD_CDC_TxAlways(const uint8_t *buf, uint32_t len);
 static microrl_t rl;
 static microrl_t * prl = &rl;
 static unsigned curr_cmd_param;
-static volatile enum {COMMAND_EMPTY, COMMAND_WIDTH, COMMAND_OFFSET, COMMAND_HV_ON, COMMAND_HV_OFF} curr_cmd = COMMAND_EMPTY;
+static volatile enum {COMMAND_EMPTY, COMMAND_WIDTH, COMMAND_PULSE_ON, COMMAND_PULSE_OFF, COMMAND_HV_ON, COMMAND_HV_OFF} curr_cmd = COMMAND_EMPTY;
 
 //*****************************************************************************
 //dummy function, no need on linux-PC
@@ -57,7 +57,7 @@ void print (const char * str)
 	#define _SCMD_MRL  "microrl"
 	#define _SCMD_DEMO "demo"
 #define _CMD_WIDTH "width"
-#define _CMD_OFFSET "offset"
+#define _CMD_PULSE "pulse"
 #define _CMD_HV  "hv" //
 // sub commands for HV command
 	#define _SCMD_SWITCH_ON  "on"
@@ -95,7 +95,7 @@ void print_help ()
 	print ("\tclear - clear screen\n\r");
 	print ("\tlist  - list all commands in tree\n\r");
 	print ("\tname [string] - print 'name' value if no 'string', set name value to 'string' if 'string' present\n\r");
-	print ("\toffset {offset} - set pulse offset, us\n\r");
+	print ("\tpulse {on | off}- run pulse\n\r");
 	print ("\twidth {width} - set pulse width, us\n\r");
 	print ("\thv {on | off}- +300V power supply on off\n\r");
 }
@@ -154,14 +154,20 @@ int execute (int argc, const char * const * argv)
 			} else {
 				print ("width needs 1 parametr, see help\n\r");
 			}
-		} else if (strcmp (argv[i], _CMD_OFFSET) == 0) {
+		} else if (strcmp (argv[i], _CMD_PULSE) == 0) {
 			if (++i < argc) {
-				char* endptr;
-				curr_cmd_param = strtol(argv[i],&endptr,10);
-				curr_cmd = COMMAND_OFFSET;
-				print ("\n\r");
+				if (strcmp (argv[i], _SCMD_SWITCH_ON) == 0) {
+					curr_cmd = COMMAND_PULSE_ON;
+					print ("\n\r");
+				} else if (strcmp (argv[i], _SCMD_SWITCH_OFF) == 0) {
+					curr_cmd = COMMAND_PULSE_OFF;
+					print ("\n\r");
+				} else {
+					print ((char*)argv[i]);
+					print (" wrong argument, see help\n\r");
+				}
 			} else {
-				print ("offset needs 1 parametr, see help\n\r");
+				print ("pulse needs 1 parametr, see help\n\r");
 			}
 		} else if (strcmp (argv[i], _CMD_HV) == 0) {
 			if (++i < argc) {
@@ -176,7 +182,7 @@ int execute (int argc, const char * const * argv)
 					print (" wrong argument, see help\n\r");
 				}
 			} else {
-				print ("version needs 1 parametr, see help\n\r");
+				print ("hv needs 1 parametr, see help\n\r");
 			}
 		} else {
 			print ("command: '");
@@ -252,17 +258,20 @@ void TERM_Task(void)
 		EQ_PutEventParam(CMD_WIDTH, param);
 		curr_cmd = COMMAND_EMPTY;
 		break;
-	case COMMAND_OFFSET:
-		param.uiParam = curr_cmd_param;
-		EQ_PutEventParam(CMD_OFFSET, param);
-		curr_cmd = COMMAND_EMPTY;
-		break;
 	case COMMAND_HV_ON:
 		EQ_PutEvent(CMD_HV_ON);
 		curr_cmd = COMMAND_EMPTY;
 		break;
 	case COMMAND_HV_OFF:
 		EQ_PutEvent(CMD_HV_OFF);
+		curr_cmd = COMMAND_EMPTY;
+		break;
+	case COMMAND_PULSE_ON:
+		EQ_PutEvent(CMD_PULSE_ON);
+		curr_cmd = COMMAND_EMPTY;
+		break;
+	case COMMAND_PULSE_OFF:
+		EQ_PutEvent(CMD_PULSE_OFF);
 		curr_cmd = COMMAND_EMPTY;
 		break;
 	}

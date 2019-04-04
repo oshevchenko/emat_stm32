@@ -10,7 +10,7 @@
   * inserted by the user or by software development tools
   * are owned by their respective copyright owners.
   *
-  * Copyright (c) 2018 STMicroelectronics International N.V. 
+  * Copyright (c) 2019 STMicroelectronics International N.V. 
   * All rights reserved.
   *
   * Redistribution and use in source and binary forms, with or without 
@@ -55,23 +55,33 @@
 #include "src/microrl.h"
 #include "event_queue.h"
 #include "timer.h"
+#include "timer_pulse.h"
 #include "stm32_microrl_misc.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 //static uint32_t timer_counter;
-static uint32_t last_offset=13702;
+static uint32_t pulse_width=10;
 static uint32_t last_width=102;
 typedef enum e_hv_state_TAG{
 	HV_STATE_OFF,
-	HV_STATE_ON,
+	HV_STATE_ON
 	} e_hv_state;
 static e_hv_state hv_state = HV_STATE_OFF;
+typedef enum e_pulse_state_TAG{
+	PULSE_STATE_OFF,
+	PULSE_STATE_DELAY_AFTER_HV_OFF,
+	PULSE_STATE_ON_AFTER_HV_OFF,
+	PULSE_STATE_ON
+	} e_pulse_state;
+static e_pulse_state pulse_state = PULSE_STATE_OFF;
+
 typedef enum e_ext_int_state_TAG{
 	EXT_INT_STATE_IDLE,
 	EXT_INT_STATE_TRIGGERED,
@@ -85,10 +95,46 @@ static e_ext_int_state ext_int_state = EXT_INT_STATE_IDLE;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_TIM3_Init(void);
 static void MX_NVIC_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
+#define HV_ON() { \
+		HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_RESET); \
+		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET); \
+	}
+#define HV_OFF() { \
+		HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_SET); \
+		HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET); \
+    }
+
+#define PULSE_ON() { \
+		HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_RESET); \
+		HAL_GPIO_WritePin(GPIO_PULSE_B_GPIO_Port, GPIO_PULSE_B_Pin, GPIO_PIN_RESET); \
+	}
+#define PULSE_OFF() { \
+		HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_SET); \
+		HAL_GPIO_WritePin(GPIO_PULSE_B_GPIO_Port, GPIO_PULSE_B_Pin, GPIO_PIN_SET); \
+	}
+#define PS_ON() { \
+		HAL_GPIO_WritePin(GPIO_PS_EN_GPIO_Port, GPIO_PS_EN_Pin, GPIO_PIN_SET); \
+	}
+#define PS_OFF() { \
+		HAL_GPIO_WritePin(GPIO_PS_EN_GPIO_Port, GPIO_PS_EN_Pin, GPIO_PIN_RESET); \
+	}
+
+#define AMP_ON() { \
+		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_SET); \
+	}
+#define AMP_OFF() { \
+		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_RESET); \
+	}
+
+//#define LED_GREEN_ON() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET)
+//#define LED_GREEN_OFF() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET)
+
+#define DELAY_AFTER_HV_OFF 5
 
 /* USER CODE END PFP */
 
@@ -98,6 +144,16 @@ void EventQueueIsFull(void)
 	print("Error! EQ is Full!");
 	for(;;);
 }
+
+void TimerPulseOffCallback(void)
+{
+	PULSE_OFF();
+}
+void TimerAmpOnCallback(void)
+{
+	AMP_ON();
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -131,12 +187,19 @@ int main(void)
   MX_GPIO_Init();
   MX_USB_DEVICE_Init();
   MX_TIM4_Init();
+  MX_TIM3_Init();
 
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim4);
+//  HAL_TIM_Base_Start_IT(&htim3);
   init();
+  TIMER_PULSE_Init(&htim3,TIM3_IRQn);
+  tm_pulse_cb_s cb;
+  cb.p_amp_on_callback = &TimerAmpOnCallback;
+  cb.p_pulse_off_callback = &TimerPulseOffCallback;
+  TIMER_PULSE_RegisterCallbackExpired(&cb);
 //  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
   /* USER CODE END 2 */
 
@@ -150,6 +213,7 @@ int main(void)
 //	  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
 	  TERM_Task();
 	  TIMER_Task();
+	  TIMER_PULSE_Task();
 	  do {
 		  EQ_GetEvent(&ev);
 //		  ExtIntTask(&ev);
@@ -157,38 +221,80 @@ int main(void)
 		  case NO_EVENT:
 			  break;
 		  case CMD_WIDTH:
-			  TIMER_StartAuto(1, ev.param.uiParam);
+			  pulse_width=ev.param.uiParam;
+//			  TIMER_StartAuto(1, ev.param.uiParam);
 //			  last_width = ev.param.uiParam;
-//			  TIM1->ARR = last_width+last_offset;
 			  break;
-		  case CMD_OFFSET:
-			  last_offset = ev.param.uiParam*34;
-//			  TIM1->CCR1 = last_offset;
-//			  TIM1->ARR = last_width+last_offset;
-//			  HAL_TIM_OnePulse_Stop(&htim1,TIM_CHANNEL_2);
-//			  sConfig.OCMode = TIM_OCMODE_PWM2;
-//			  sConfig.OCPolarity = TIM_OCPOLARITY_HIGH;
-//			  sConfig.Pulse = ev.param.uiParam*34;
-//			  sConfig.ICPolarity = TIM_ICPOLARITY_RISING;
-//			  sConfig.ICSelection = TIM_ICSELECTION_DIRECTTI;
-//			  sConfig.ICFilter = 0;
-//			  HAL_TIM_OnePulse_ConfigChannel(&htim1, &sConfig, TIM_CHANNEL_1, TIM_CHANNEL_2);
-//			  HAL_TIM_OnePulse_Start(&htim1,TIM_CHANNEL_2);
+		  case CMD_PULSE_OFF:
+			  if (pulse_state == PULSE_STATE_ON) {
+				  PULSE_OFF();
+				  pulse_state = PULSE_STATE_OFF;
+			  }
+			  break;
+		  case CMD_PULSE_ON:
+			  if (hv_state == HV_STATE_ON) {
+				  HV_OFF();
+				  hv_state = HV_STATE_OFF;
+				  TIMER_StartAuto(1, DELAY_AFTER_HV_OFF);
+				  pulse_state = PULSE_STATE_DELAY_AFTER_HV_OFF;
+			  } else {
+				  PULSE_ON();
+				  AMP_OFF();
+				  TIMER_PULSE_Start(200);
+
+//				  TIMER_StartAuto(1, pulse_width);
+				  pulse_state = PULSE_STATE_ON;
+			  }
+//			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_SET);  // SET means open IGBT
+			  break;
+		  case PULSE_TIMER_EXPIRED:
+			  if (pulse_state == PULSE_STATE_ON) {
+				  pulse_state = PULSE_STATE_OFF;
+			  }
 			  break;
 		  case TIMER1_EXPIRED:
-			  HAL_GPIO_TogglePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin);
+			  if (pulse_state == PULSE_STATE_ON) {
+				  PULSE_OFF();
+				  pulse_state = PULSE_STATE_OFF;
+			  } else if (pulse_state == PULSE_STATE_DELAY_AFTER_HV_OFF) {
+				  PS_OFF();
+				  PULSE_ON();
+				  TIMER_StartAuto(1, pulse_width);
+				  pulse_state = PULSE_STATE_ON_AFTER_HV_OFF;
+			  } else if (pulse_state == PULSE_STATE_ON_AFTER_HV_OFF) {
+				  PULSE_OFF();
+				  PS_ON();
+				  pulse_state = PULSE_STATE_OFF;
+				  HV_ON();
+				  hv_state = HV_STATE_ON;
+			  }
+
+//			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_RESET);// RESET means close IGBT
 			  break;
 		  case CMD_HV_ON:
 //			  HAL_GPIO_WritePin(HV_ON_OFF_GPIO_Port, HV_ON_OFF_Pin, GPIO_PIN_SET);
 			  TIMER_Stop(1);
-			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
+//			  LED_GREEN_ON();
+			  PS_ON();
+			  HV_ON();
 			  hv_state = HV_STATE_ON;
+			  PULSE_OFF();
+			  pulse_state = PULSE_STATE_OFF;
+
+//			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
+//			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_RESET);// RESET means close IGBT
+//			  HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_RESET);
 			  break;
 		  case CMD_HV_OFF:
 			  TIMER_Stop(1);
-			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
-//			  HAL_GPIO_WritePin(HV_ON_OFF_GPIO_Port, HV_ON_OFF_Pin, GPIO_PIN_RESET);
+//			  LED_GREEN_OFF();
+//			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
+			  HV_OFF();
 			  hv_state = HV_STATE_OFF;
+			  PULSE_ON();
+			  pulse_state = PULSE_STATE_ON;
+//			  HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_SET); // SET means OFF - close open drain
+//			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_SET);
 			  break;
 		  default:
 			  break;
@@ -272,6 +378,39 @@ static void MX_NVIC_Init(void)
   HAL_NVIC_EnableIRQ(TIM4_IRQn);
 }
 
+/* TIM3 init function */
+static void MX_TIM3_Init(void)
+{
+
+  TIM_ClockConfigTypeDef sClockSourceConfig;
+  TIM_MasterConfigTypeDef sMasterConfig;
+
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 48;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 48;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* TIM4 init function */
 static void MX_TIM4_Init(void)
 {
@@ -326,7 +465,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_GREEN_LED_Pin|GPIO_HV_ON_Pin|GPIO_PULSE_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PS_EN_Pin|GPIO_AMP_ON_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIO_PULSE_B_GPIO_Port, GPIO_PULSE_B_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : GPIO_GREEN_LED_Pin */
   GPIO_InitStruct.Pin = GPIO_GREEN_LED_Pin;
@@ -335,37 +480,61 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIO_GREEN_LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC14 PC15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
+  /*Configure GPIO pins : GPIO_HV_ON_Pin GPIO_PULSE_Pin */
+  GPIO_InitStruct.Pin = GPIO_HV_ON_Pin|GPIO_PULSE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA0 PA1 PA2 PA3 
-                           PA4 PA5 PA6 PA7 
-                           PA8 PA9 PA10 PA13 
-                           PA14 PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3 
-                          |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7 
-                          |GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_13 
-                          |GPIO_PIN_14|GPIO_PIN_15;
+  /*Configure GPIO pin : GPIO_PS_EN_Pin */
+  GPIO_InitStruct.Pin = GPIO_PS_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIO_PS_EN_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : GPIO_AMP_ON_Pin */
+  GPIO_InitStruct.Pin = GPIO_AMP_ON_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIO_AMP_ON_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA2 PA3 PA4 PA5 
+                           PA6 PA7 PA8 PA9 
+                           PA10 PA13 PA14 PA15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5 
+                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9 
+                          |GPIO_PIN_10|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB0 PB1 PB2 PB10 
                            PB11 PB12 PB13 PB14 
-                           PB15 PB3 PB4 PB5 
-                           PB6 PB7 PB8 PB9 */
+                           PB15 PB4 PB5 PB6 
+                           PB7 PB8 PB9 */
   GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_10 
                           |GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14 
-                          |GPIO_PIN_15|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5 
-                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
+                          |GPIO_PIN_15|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 
+                          |GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : GPIO_PULSE_B_Pin */
+  GPIO_InitStruct.Pin = GPIO_PULSE_B_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIO_PULSE_B_GPIO_Port, &GPIO_InitStruct);
 
 }
 
 /* USER CODE BEGIN 4 */
-
+//void ReloadPulseTimer()
+//{
+//	htim3.Instance->ARR = 200;
+//}
 /* USER CODE END 4 */
 
 /**

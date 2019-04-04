@@ -23,6 +23,7 @@ typedef struct TIMER_SM_STRUCT {
 } tm_sm_s;
 
 void TIMER_Tick(void);
+void TIMER_PULSE_Tick(void);
 void TIMER_Task(void);
 void TIMER_Start(uint8_t num, uint32_t delay);
 void TIMER_StartAuto(uint8_t num, uint32_t delay);
