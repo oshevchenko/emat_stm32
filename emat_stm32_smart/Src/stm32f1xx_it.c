@@ -37,6 +37,7 @@
 
 /* USER CODE BEGIN 0 */
 #include "timer.h"
+#include "keys.h"
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -248,6 +249,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         /* Toggle LED */
     	TIMER_Tick();
+    	KEYS_Tick();
     }
     if (htim->Instance == htim3.Instance)
     {

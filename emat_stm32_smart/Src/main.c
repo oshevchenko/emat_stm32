@@ -56,6 +56,7 @@
 #include "event_queue.h"
 #include "timer.h"
 #include "timer_pulse.h"
+#include "keys.h"
 #include "stm32_microrl_misc.h"
 /* USER CODE END Includes */
 
@@ -130,7 +131,6 @@ static void MX_NVIC_Init(void);
 #define AMP_OFF() { \
 		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_RESET); \
 	}
-
 //#define LED_GREEN_ON() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET)
 //#define LED_GREEN_OFF() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET)
 
@@ -156,6 +156,51 @@ void TimerPulseOffCallback(void)
 void TimerAmpOnCallback(void)
 {
 	AMP_ON();
+}
+
+char Key0Callback(void)
+{
+	char pressed = 0;
+	if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIO_KEY1_GPIO_Port, GPIO_KEY1_Pin)){
+		pressed = 1;
+	}
+	return pressed;
+}
+
+char KeyPA3Callback(void)
+{
+	char pressed = 0;
+	if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIO_KEY_PA3_GPIO_Port, GPIO_KEY_PA3_Pin)){
+		pressed = 1;
+	}
+	return pressed;
+}
+
+char KeyPA4Callback(void)
+{
+	char pressed = 0;
+	if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIO_KEY_PA4_GPIO_Port, GPIO_KEY_PA4_Pin)){
+		pressed = 1;
+	}
+	return pressed;
+}
+
+char KeyPA5Callback(void)
+{
+	char pressed = 0;
+	if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIO_KEY_PA5_GPIO_Port, GPIO_KEY_PA5_Pin)){
+		pressed = 1;
+	}
+	return pressed;
+}
+
+char KeyPA6Callback(void)
+{
+	char pressed = 0;
+	if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIO_KEY_PA6_GPIO_Port, GPIO_KEY_PA6_Pin)){
+		pressed = 1;
+	}
+	return pressed;
 }
 
 /* USER CODE END 0 */
@@ -196,6 +241,29 @@ int main(void)
   /* Initialize interrupts */
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
+  KEYS_Init(TIM4_IRQn);
+  keys_cb_s keys_cb;
+
+  keys_cb.mask = 0x3FF;
+  keys_cb.event = CMD_PULSE_ON;
+  keys_cb.p_check_key_callback = &Key0Callback;
+  KEYS_RegisterCallback(0, &keys_cb);
+
+  keys_cb.mask = 0x3FF;
+  keys_cb.event = CMD_HV_ON;
+  keys_cb.p_check_key_callback = &KeyPA3Callback;
+  KEYS_RegisterCallback(1, &keys_cb);
+
+  keys_cb.mask = 0x3FF;
+  keys_cb.event = CMD_PULSE_ON;
+  keys_cb.p_check_key_callback = &KeyPA4Callback;
+  KEYS_RegisterCallback(2, &keys_cb);
+
+  keys_cb.mask = 0x3FF;
+  keys_cb.event = CMD_HV_OFF;
+  keys_cb.p_check_key_callback = &KeyPA5Callback;
+  KEYS_RegisterCallback(3, &keys_cb);
+
   HAL_TIM_Base_Start_IT(&htim4);
 //  HAL_TIM_Base_Start_IT(&htim3);
   init();
@@ -222,6 +290,7 @@ int main(void)
 	  TERM_Task();
 	  TIMER_Task();
 	  TIMER_PULSE_Task();
+	  KEYS_Task();
 	  do {
 		  EQ_GetEvent(&ev);
 //		  ExtIntTask(&ev);
@@ -306,7 +375,7 @@ int main(void)
 //			  HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET);
 			  HV_OFF();
 			  hv_state = HV_STATE_OFF;
-			  PULSE_ON();
+//			  PULSE_ON();
 			  pulse_state = PULSE_STATE_ON;
 //			  HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_SET); // SET means OFF - close open drain
 //			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_SET);
@@ -483,7 +552,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_GREEN_LED_Pin|GPIO_HV_ON_Pin|GPIO_PULSE_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PS_EN_Pin|GPIO_AMP_ON_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_AMP_ON_Pin|GPIO_PS_EN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIO_PULSE_B_GPIO_Port, GPIO_PULSE_B_Pin, GPIO_PIN_SET);
@@ -502,12 +571,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : GPIO_PS_EN_Pin */
-  GPIO_InitStruct.Pin = GPIO_PS_EN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIO_PS_EN_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pins : GPIO_KEY1_Pin GPIO_KEY_PA3_Pin GPIO_KEY_PA4_Pin GPIO_KEY_PA5_Pin 
+                           GPIO_KEY_PA6_Pin */
+  GPIO_InitStruct.Pin = GPIO_KEY1_Pin|GPIO_KEY_PA3_Pin|GPIO_KEY_PA4_Pin|GPIO_KEY_PA5_Pin 
+                          |GPIO_KEY_PA6_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : GPIO_AMP_ON_Pin */
   GPIO_InitStruct.Pin = GPIO_AMP_ON_Pin;
@@ -516,12 +586,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIO_AMP_ON_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA2 PA3 PA4 PA5 
-                           PA6 PA7 PA8 PA9 
-                           PA10 PA13 PA14 PA15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5 
-                          |GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9 
-                          |GPIO_PIN_10|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  /*Configure GPIO pin : GPIO_PS_EN_Pin */
+  GPIO_InitStruct.Pin = GPIO_PS_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIO_PS_EN_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA7 PA8 PA9 PA10 
+                           PA13 PA14 PA15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10 
+                          |GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 

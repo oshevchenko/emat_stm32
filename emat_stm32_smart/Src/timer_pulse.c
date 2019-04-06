@@ -20,8 +20,8 @@ void TIMER_PULSE_Start(void)
 {
 	timer.state = P_RUN_TO_PULSE_ON;
 	m_htim->Instance->ARR = timer.cb.delay_to_pulse_on;
-	HAL_TIM_Base_Start_IT(m_htim);
 	m_htim->Instance->CNT = 0;
+	HAL_TIM_Base_Start_IT(m_htim);
 }
 
 void TIMER_PULSE_Tick(void)
