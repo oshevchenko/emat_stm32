@@ -11,6 +11,7 @@
 #define __TIMER_PULSE_H__
 typedef enum TIMER_PULSE_SM_STATE {
 	P_IDLE = -1,
+	P_RUN_TO_PS_OFF,
 	P_RUN_TO_PULSE_ON,
 	P_RUN_TO_AMP_ON,
 	P_RUN_TO_PULSE_OFF,
@@ -18,9 +19,11 @@ typedef enum TIMER_PULSE_SM_STATE {
 } tm_pulse_sm_e;
 
 typedef struct TIMER_PULSE_CB_STRUCT {
+	uint32_t delay_to_ps_off;
 	uint32_t delay_to_pulse_on;
 	uint32_t delay_to_amp_on;
 	uint32_t delay_to_pulse_off;
+	void (*p_ps_off_callback)(void);
 	void (*p_amp_on_callback)(void);
 	void (*p_pulse_on_callback)(void);
 	void (*p_pulse_off_callback)(void);

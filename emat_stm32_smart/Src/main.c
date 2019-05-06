@@ -126,10 +126,10 @@ static void MX_NVIC_Init(void);
 	}
 
 #define AMP_ON() { \
-		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_SET); \
+		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_RESET); \
 	}
 #define AMP_OFF() { \
-		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_RESET); \
+		HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_SET); \
 	}
 //#define LED_GREEN_ON() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_RESET)
 //#define LED_GREEN_OFF() HAL_GPIO_WritePin(GPIO_GREEN_LED_GPIO_Port, GPIO_GREEN_LED_Pin, GPIO_PIN_SET)
@@ -148,6 +148,10 @@ void EventQueueIsFull(void)
 void TimerPulseOnCallback(void)
 {
 	PULSE_ON();
+}
+void TimerPsOffCallback(void)
+{
+	PS_OFF();
 }
 void TimerPulseOffCallback(void)
 {
@@ -264,15 +268,22 @@ int main(void)
   keys_cb.p_check_key_callback = &KeyPA5Callback;
   KEYS_RegisterCallback(3, &keys_cb);
 
+  keys_cb.mask = 0x3FF;
+  keys_cb.event = CMD_PULSE_OFF;
+  keys_cb.p_check_key_callback = &KeyPA6Callback;
+  KEYS_RegisterCallback(3, &keys_cb);
+
   HAL_TIM_Base_Start_IT(&htim4);
 //  HAL_TIM_Base_Start_IT(&htim3);
   init();
   TIMER_PULSE_Init(&htim3,TIM3_IRQn);
   tm_pulse_cb_s cb;
+  cb.p_ps_off_callback = &TimerPsOffCallback;;
   cb.p_amp_on_callback = &TimerAmpOnCallback;
   cb.p_pulse_on_callback = &TimerPulseOnCallback;
   cb.p_pulse_off_callback = &TimerPulseOffCallback;
-  cb.delay_to_pulse_on = 100;
+  cb.delay_to_ps_off = 1000;
+  cb.delay_to_pulse_on = 4000;
   cb.delay_to_amp_on = 15;
   cb.delay_to_pulse_off = 285;
   TIMER_PULSE_RegisterCallbackExpired(&cb);
@@ -312,14 +323,14 @@ int main(void)
 			  if (hv_state == HV_STATE_ON) {
 				  HV_OFF();
 				  hv_state = HV_STATE_OFF;
-				  PS_OFF();
+//				  PS_OFF();
 				  AMP_OFF();
 				  TIMER_PULSE_Start();
 				  pulse_state = PULSE_STATE_DELAY_AFTER_HV_OFF;
 			  } else {
-//				  PULSE_ON();
+				  PULSE_ON();
 				  AMP_OFF();
-				  TIMER_PULSE_Start();
+//				  TIMER_PULSE_Start();
 
 //				  TIMER_StartAuto(1, pulse_width);
 				  pulse_state = PULSE_STATE_ON;
@@ -329,6 +340,7 @@ int main(void)
 		  case PULSE_TIMER_EXPIRED:
 			  if (pulse_state == PULSE_STATE_ON) {
 				  pulse_state = PULSE_STATE_OFF;
+				  PS_ON();
 			  } else if (PULSE_STATE_DELAY_AFTER_HV_OFF == pulse_state) {
 				  pulse_state = PULSE_STATE_OFF;
 				  HV_ON();
@@ -376,7 +388,7 @@ int main(void)
 			  HV_OFF();
 			  hv_state = HV_STATE_OFF;
 //			  PULSE_ON();
-			  pulse_state = PULSE_STATE_ON;
+//			  pulse_state = PULSE_STATE_ON;
 //			  HAL_GPIO_WritePin(GPIO_HV_ON_GPIO_Port, GPIO_HV_ON_Pin, GPIO_PIN_SET); // SET means OFF - close open drain
 //			  HAL_GPIO_WritePin(GPIO_PULSE_GPIO_Port, GPIO_PULSE_Pin, GPIO_PIN_SET);
 			  break;
@@ -552,7 +564,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_GREEN_LED_Pin|GPIO_HV_ON_Pin|GPIO_PULSE_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_AMP_ON_Pin|GPIO_PS_EN_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIO_AMP_ON_GPIO_Port, GPIO_AMP_ON_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIO_PS_EN_GPIO_Port, GPIO_PS_EN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIO_PULSE_B_GPIO_Port, GPIO_PULSE_B_Pin, GPIO_PIN_SET);

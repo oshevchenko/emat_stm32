@@ -18,15 +18,20 @@ static IRQn_Type m_irq;
 
 void TIMER_PULSE_Start(void)
 {
-	timer.state = P_RUN_TO_PULSE_ON;
-	m_htim->Instance->ARR = timer.cb.delay_to_pulse_on;
+	timer.state = P_RUN_TO_PS_OFF;
+	m_htim->Instance->ARR = timer.cb.delay_to_ps_off;
 	m_htim->Instance->CNT = 0;
 	HAL_TIM_Base_Start_IT(m_htim);
 }
 
 void TIMER_PULSE_Tick(void)
 {
-	if (P_RUN_TO_PULSE_ON == timer.state) {
+
+	if (P_RUN_TO_PS_OFF == timer.state) {
+		m_htim->Instance->ARR = timer.cb.delay_to_pulse_on;
+		(*timer.cb.p_ps_off_callback)();
+		timer.state = P_RUN_TO_PULSE_ON;
+	} else if (P_RUN_TO_PULSE_ON == timer.state) {
 		m_htim->Instance->ARR = timer.cb.delay_to_amp_on;
 		(*timer.cb.p_pulse_on_callback)();
 		timer.state = P_RUN_TO_AMP_ON;
@@ -45,7 +50,9 @@ void TIMER_PULSE_RegisterCallbackExpired(tm_pulse_cb_s *p_cb)
 	timer.cb.delay_to_pulse_on = p_cb->delay_to_pulse_on;
 	timer.cb.delay_to_amp_on = p_cb->delay_to_amp_on;
 	timer.cb.delay_to_pulse_off = p_cb->delay_to_pulse_off;
+	timer.cb.delay_to_ps_off = p_cb->delay_to_ps_off;
 
+	timer.cb.p_ps_off_callback = p_cb->p_ps_off_callback;
 	timer.cb.p_amp_on_callback = p_cb->p_amp_on_callback;
 	timer.cb.p_pulse_off_callback = p_cb->p_pulse_off_callback;
 	timer.cb.p_pulse_on_callback = p_cb->p_pulse_on_callback;
